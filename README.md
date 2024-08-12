@@ -28,7 +28,7 @@ To run this app locally, follow these steps:
 
    ```bash
    git clone https://github.com/redaak/OptionsPricing.git
-   cd black-scholes-visualizer
+   cd OptionsPricing
   Usage
 Adjust Parameters:
 Use the sliders and input fields to set the current asset price, strike price, time to maturity, volatility, and risk-free interest rate.
