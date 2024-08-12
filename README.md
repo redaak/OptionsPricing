@@ -27,7 +27,7 @@ To run this app locally, follow these steps:
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/your-username/black-scholes-visualizer.git
+   git clone https://github.com/redaak/black-scholes-visualizer.git
    cd black-scholes-visualizer
   Usage
 Adjust Parameters:
