@@ -115,7 +115,7 @@ fig = make_subplots(
     rows=1, cols=2,
     subplot_titles=("Call Option Price Heatmap", "Put Option Price Heatmap"),
     shared_yaxes=True,
-    column_widths=[0.42, 0.42],  # Adjust column width to fit within the page
+    column_widths=[0.48, 0.48],  # Adjust column width to fit within the page
     horizontal_spacing=0.05  # Adjust spacing between subplots
 )
 
