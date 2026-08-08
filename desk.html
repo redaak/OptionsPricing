@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Options Pricing Desk · Black-Scholes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #F4F3EF; }
+  a { color: #0B6E5F; text-decoration: none; border-bottom: 1px solid rgba(11,110,95,0.3); }
+  a:hover { color: #084F45; border-bottom-color: #084F45; }
+  input, select, button { font-family: inherit; }
+  input[type=range] { accent-color: #0B6E5F; height: 2px; }
+  input:focus, select:focus { outline: 1px solid #0B6E5F; outline-offset: 1px; }
+  ::selection { background: #CFE3DE; }
+
+  /* Keep min-height:100vh inclusive of padding, so the page never overflows
+     the viewport (or the embedding iframe) by exactly its padding. */
+  #deskRoot { box-sizing: border-box; }
+
+  .reset { cursor: pointer; }
+  .reset:hover { color: #15161A; }
+  .preset:hover { border-color: #0B6E5F; }
+  .solve:hover { background: #0B6E5F; }
+
+  .desk-inner { max-width: 1560px; min-width: 1360px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+  .main-grid { display: grid; grid-template-columns: 322px minmax(600px, 1fr) 330px; gap: 10px; align-items: start; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .heat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .compare-grid { display: grid; grid-template-columns: 126px minmax(0,1fr) minmax(0,1fr) 92px; gap: 0 12px; align-items: center; }
+  .greek-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 0 12px; align-items: center; }
+  .contents { display: contents; }
+
+  @media (max-width: 1400px) {
+    .desk-inner { min-width: 0; }
+    .main-grid { grid-template-columns: 300px minmax(0,1fr) 300px; }
+  }
+  @media (max-width: 1120px) {
+    .main-grid { grid-template-columns: minmax(0,1fr); }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 720px) {
+    .kpi-grid { grid-template-columns: 1fr; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .heat-grid { grid-template-columns: 1fr; }
+    .compare-grid { grid-template-columns: 96px minmax(0,1fr) minmax(0,1fr) 76px; }
+  }
+</style>
+</head>
+<body>
+<div id="deskRoot" style="min-height:100vh; background:#F4F3EF; font-family:'Instrument Sans',system-ui,sans-serif; color:#15161A; -webkit-font-smoothing:antialiased; padding:24px 28px 56px">
+ <div id="deskInner" class="desk-inner">
+
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-bottom:1px solid #DCD8CE; padding-bottom:14px">
+    <div style="display:flex; flex-direction:column; gap:4px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8A867C">Black-Scholes · European options</div>
+      <div style="font-size:27px; font-weight:600; letter-spacing:-0.02em; line-height:1">Options Pricing Desk</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:20px">
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Recompute</div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:13px; color:#3C3A34"><span style="width:6px; height:6px; border-radius:50%; background:#0B6E5F"></span>Live · every keystroke</div>
+      </div>
+      <div style="width:1px; height:34px; background:#DCD8CE"></div>
+      <div style="font-size:13px; color:#6E6B63">Built by <a href="https://www.linkedin.com/in/reda-akdim/" target="_blank" rel="noopener">Reda Akdim</a></div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px; display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:baseline; justify-content:space-between">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#0B6E5F">Call</div>
+        <div id="moneynessCall" style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8A867C"></div>
+      </div>
+      <div id="callPrice" style="font-family:'IBM Plex Mono',monospace; font-size:38px; font-weight:500; letter-spacing:-0.03em; line-height:1; color:#0B6E5F"></div>
+      <div style="display:flex; gap:14px; font-size:12px; color:#6E6B63">
+        <div>Intrinsic <span id="callIntrinsic" style="font-family:'IBM Plex Mono',monospace; color:#15161A"></span></div>
+        <div>Time <span id="callExtrinsic" style="font-family:'IBM Plex Mono',monospace; color:#15161A"></span></div>
+      </div>
+    </div>
+
+    <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px; display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:baseline; justify-content:space-between">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#A63D2A">Put</div>
+        <div id="moneynessPut" style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8A867C"></div>
+      </div>
+      <div id="putPrice" style="font-family:'IBM Plex Mono',monospace; font-size:38px; font-weight:500; letter-spacing:-0.03em; line-height:1; color:#A63D2A"></div>
+      <div style="display:flex; gap:14px; font-size:12px; color:#6E6B63">
+        <div>Intrinsic <span id="putIntrinsic" style="font-family:'IBM Plex Mono',monospace; color:#15161A"></span></div>
+        <div>Time <span id="putExtrinsic" style="font-family:'IBM Plex Mono',monospace; color:#15161A"></span></div>
+      </div>
+    </div>
+
+    <div id="readouts" style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px; display:grid; grid-template-columns:1fr 1fr; gap:10px 14px"></div>
+
+    <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px; display:flex; flex-direction:column; gap:8px">
+      <div style="display:flex; align-items:center; justify-content:space-between">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Put-call parity</div>
+        <div id="parityBadge" style="font-family:'IBM Plex Mono',monospace; font-size:10px; padding:2px 6px; border-radius:2px"></div>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#3C3A34; line-height:1.7">
+        <div>C − P<span style="color:#8A867C"> = </span><span id="parityLhs"></span></div>
+        <div>S − Ke<sup>−rT</sup><span style="color:#8A867C"> = </span><span id="parityRhs"></span></div>
+      </div>
+      <div style="font-size:11.5px; color:#6E6B63; line-height:1.45">Residual <span id="parityResidual"></span> — <span id="parityNote"></span></div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Paste a quote</div>
+        <input id="inQuote" type="text" data-a="quote" placeholder="AAPL 231.40 C 235 2026-09-19 @ 6.85" style="width:100%; box-sizing:border-box; font-family:'IBM Plex Mono',monospace; font-size:12.5px; padding:9px 10px; border:1px solid #DCD8CE; border-radius:2px; background:#FAF9F6; color:#15161A">
+        <div id="quoteStatus" style="font-size:11.5px; line-height:1.5"></div>
+        <div id="quoteChips" style="display:flex; flex-wrap:wrap; gap:5px"></div>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:center; justify-content:space-between">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Presets</div>
+          <div class="reset" data-a="reset" style="font-size:11px; color:#6E6B63; border-bottom:1px solid #DCD8CE">reset</div>
+        </div>
+        <div id="presets" style="display:grid; grid-template-columns:1fr 1fr; gap:5px"></div>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 18px; display:flex; flex-direction:column; gap:14px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Inputs</div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+          <div style="display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:11.5px; color:#6E6B63">Spot S</div>
+            <input id="inS" type="number" step="0.01" data-a="S" style="width:100%; box-sizing:border-box; font-family:'IBM Plex Mono',monospace; font-size:14px; padding:7px 8px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:11.5px; color:#6E6B63">Strike K</div>
+            <input id="inK" type="number" step="0.01" data-a="K" style="width:100%; box-sizing:border-box; font-family:'IBM Plex Mono',monospace; font-size:14px; padding:7px 8px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:#6E6B63; margin-top:-6px">
+          <span>Moneyness S/K</span>
+          <span id="moneynessRatio" style="font-family:'IBM Plex Mono',monospace; color:#15161A"></span>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:11.5px; color:#6E6B63">Expiry</div>
+            <div id="dteLabel" style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#15161A"></div>
+          </div>
+          <input id="inExpiry" type="date" data-a="expiry" style="width:100%; box-sizing:border-box; font-family:'IBM Plex Mono',monospace; font-size:13px; padding:7px 8px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+          <div style="font-size:11px; color:#8A867C">T = <span id="TLabel"></span> years, computed from today</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:5px">
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:11.5px; color:#6E6B63">Volatility σ</div>
+            <div id="sigmaPct" style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#15161A"></div>
+          </div>
+          <input id="inSigma" type="range" min="0.01" max="1.5" step="0.005" data-a="sigma" style="width:100%; margin:0">
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:5px">
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:11.5px; color:#6E6B63">Risk-free r</div>
+            <div id="rPct" style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#15161A"></div>
+          </div>
+          <input id="inR" type="range" min="0" max="0.15" step="0.0025" data-a="r" style="width:100%; margin:0">
+        </div>
+
+        <div style="height:1px; background:#EDEAE3"></div>
+
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Implied volatility</div>
+          <div style="display:grid; grid-template-columns:1fr auto; gap:6px; align-items:end">
+            <div style="display:flex; flex-direction:column; gap:4px">
+              <div style="font-size:11.5px; color:#6E6B63">Market price of <span id="ivTypeLabel"></span></div>
+              <input id="inMarketPrice" type="number" step="0.01" data-a="marketPrice" style="width:100%; box-sizing:border-box; font-family:'IBM Plex Mono',monospace; font-size:14px; padding:7px 8px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+            </div>
+            <div class="solve" data-a="solveIV" style="font-size:12px; font-weight:500; padding:8px 11px; border-radius:2px; background:#15161A; color:#FFFFFF; cursor:pointer; white-space:nowrap">Solve σ</div>
+          </div>
+          <div id="ivStatus" style="font-size:11.5px; line-height:1.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px; min-width:0">
+
+      <div id="charts" class="charts-grid"></div>
+
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap">
+          <div style="display:flex; flex-direction:column; gap:3px">
+            <div style="font-size:13px; font-weight:600">Price surface · spot × volatility</div>
+            <div id="heatSubtitle" style="font-size:11.5px; color:#8A867C"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px">
+            <div data-a="toggleAuto" style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:12px; color:#3C3A34">
+              <span id="autoTrack" style="width:26px; height:15px; border-radius:8px; position:relative; transition:background 0.15s"><span id="autoKnob" style="position:absolute; top:2px; width:11px; height:11px; border-radius:50%; background:#FFFFFF; transition:left 0.15s"></span></span>
+              Auto-derive ranges
+            </div>
+            <div style="display:flex; gap:8px; font-size:12px; color:#6E6B63; align-items:center">
+              <span>Spot</span>
+              <input id="inMinS" type="number" step="0.5" data-a="minS" style="width:62px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 6px; border:1px solid #DCD8CE; border-radius:2px; color:#15161A">
+              <span>→</span>
+              <input id="inMaxS" type="number" step="0.5" data-a="maxS" style="width:62px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 6px; border:1px solid #DCD8CE; border-radius:2px; color:#15161A">
+              <span style="padding-left:6px">σ</span>
+              <input id="inMinSigma" type="number" step="0.01" data-a="minSigma" style="width:54px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 6px; border:1px solid #DCD8CE; border-radius:2px; color:#15161A">
+              <span>→</span>
+              <input id="inMaxSigma" type="number" step="0.01" data-a="maxSigma" style="width:54px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 6px; border:1px solid #DCD8CE; border-radius:2px; color:#15161A">
+            </div>
+          </div>
+        </div>
+
+        <div id="heatmaps" class="heat-grid"></div>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div style="font-size:13px; font-weight:600">Compare two legs</div>
+          <div style="font-size:11.5px; color:#8A867C">Same spot, rate and volatility · differences are B − A</div>
+        </div>
+        <div class="compare-grid">
+          <div></div>
+          <div style="min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding-bottom:8px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8A867C; width:14px; flex:0 0 auto">A</div>
+            <select id="legAType" data-a="legAType" style="flex:0 1 auto; min-width:0; font-size:12px; padding:5px 4px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+              <option value="call">Call</option>
+              <option value="put">Put</option>
+            </select>
+            <input id="legAStrike" type="number" step="0.5" data-a="K" style="flex:1 1 52px; min-width:0; width:52px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 5px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+            <input id="legAExpiry" type="date" data-a="expiry" style="flex:1 1 108px; min-width:0; width:108px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:5px 4px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+          </div>
+          <div style="min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding-bottom:8px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8A867C; width:14px; flex:0 0 auto">B</div>
+            <select id="legBType" data-a="legBType" style="flex:0 1 auto; min-width:0; font-size:12px; padding:5px 4px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+              <option value="call">Call</option>
+              <option value="put">Put</option>
+            </select>
+            <input id="legBStrike" type="number" step="0.5" data-a="legBStrike" style="flex:1 1 52px; min-width:0; width:52px; font-family:'IBM Plex Mono',monospace; font-size:12px; padding:5px 5px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+            <input id="legBExpiry" type="date" data-a="legBExpiry" style="flex:1 1 108px; min-width:0; width:108px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:5px 4px; border:1px solid #DCD8CE; border-radius:2px; background:#FFFFFF; color:#15161A">
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8A867C; text-align:right; padding-bottom:8px">Δ B−A</div>
+
+          <div id="compareRows" class="contents"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">Greeks</div>
+        <div class="greek-grid">
+          <div style="font-size:11px; color:#8A867C"></div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#0B6E5F; text-align:right; padding-bottom:6px">Call</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#A63D2A; text-align:right; padding-bottom:6px">Put</div>
+          <div id="greekRows" class="contents"></div>
+        </div>
+      </div>
+
+      <div style="background:#15161A; border:1px solid #15161A; border-radius:3px; padding:15px 16px 17px; display:flex; flex-direction:column; gap:10px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8E8B82">What this means</div>
+        <div id="interpretation" style="display:flex; flex-direction:column; gap:10px"></div>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:14px 16px 18px; display:flex; flex-direction:column; gap:12px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8A867C">The model</div>
+        <div style="font-family:'Cambria Math',Georgia,serif; font-size:14.5px; color:#15161A; display:flex; flex-direction:column; gap:11px; line-height:1.4">
+          <div><i>C</i> = <i>S</i><sub>0</sub> Φ(<i>d</i><sub>1</sub>) − <i>K e</i><sup>−<i>rT</i></sup> Φ(<i>d</i><sub>2</sub>)</div>
+          <div><i>P</i> = <i>K e</i><sup>−<i>rT</i></sup> Φ(−<i>d</i><sub>2</sub>) − <i>S</i><sub>0</sub> Φ(−<i>d</i><sub>1</sub>)</div>
+          <div style="display:flex; align-items:center; gap:7px"><i>d</i><sub>1</sub> = <span style="display:inline-flex; flex-direction:column; align-items:center"><span style="padding:0 4px 2px">ln(<i>S</i><sub>0</sub>/<i>K</i>) + (<i>r</i> + σ²/2)<i>T</i></span><span style="border-top:1px solid #15161A; padding:2px 4px 0; width:100%; text-align:center">σ√<span style="border-top:1px solid #15161A; padding:0 1px"><i>T</i></span></span></span></div>
+          <div><i>d</i><sub>2</sub> = <i>d</i><sub>1</sub> − σ√<span style="border-top:1px solid #15161A; padding:0 1px"><i>T</i></span></div>
+        </div>
+        <div style="height:1px; background:#EDEAE3"></div>
+        <div id="dValues" style="display:flex; flex-direction:column; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#3C3A34"></div>
+        <div style="font-size:11px; color:#8A867C; line-height:1.5">Φ is the standard normal CDF. European exercise, no dividends, constant σ and r.</div>
+      </div>
+    </div>
+  </div>
+ </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- math ---------- */
+
+  function erf(x) {
+    var s = x < 0 ? -1 : 1; x = Math.abs(x);
+    var t = 1 / (1 + 0.5 * x);
+    var y = t * Math.exp(-x * x - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+      t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return s * (1 - y);
+  }
+  var N = function (x) { return 0.5 * (1 + erf(x / Math.SQRT2)); };
+  var npdf = function (x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); };
+  var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+  var lin = function (a, b, n) {
+    if (n <= 1) return [a];
+    var out = [];
+    for (var i = 0; i < n; i++) out.push(a + (b - a) * i / (n - 1));
+    return out;
+  };
+
+  function ds(S, K, T, r, sig) {
+    var v = sig * Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / v;
+    return { d1: d1, d2: d1 - v };
+  }
+
+  function price(S, K, T, r, sig, type) {
+    if (!(S > 0 && K > 0)) return 0;
+    if (!(T > 0) || !(sig > 0)) return type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0);
+    var o = ds(S, K, T, r, sig);
+    return type === 'call'
+      ? S * N(o.d1) - K * Math.exp(-r * T) * N(o.d2)
+      : K * Math.exp(-r * T) * N(-o.d2) - S * N(-o.d1);
+  }
+
+  function greeks(S, K, T, r, sig, type) {
+    if (!(S > 0 && K > 0 && T > 0 && sig > 0)) return { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0, probITM: 0 };
+    var o = ds(S, K, T, r, sig), sq = Math.sqrt(T), disc = Math.exp(-r * T), pd = npdf(o.d1);
+    var call = type === 'call';
+    return {
+      delta: call ? N(o.d1) : N(o.d1) - 1,
+      gamma: pd / (S * sig * sq),
+      vega: S * pd * sq / 100,
+      theta: (call
+        ? -S * pd * sig / (2 * sq) - r * K * disc * N(o.d2)
+        : -S * pd * sig / (2 * sq) + r * K * disc * N(-o.d2)) / 365,
+      rho: (call ? K * T * disc * N(o.d2) : -K * T * disc * N(-o.d2)) / 100,
+      probITM: call ? N(o.d2) : N(-o.d2)
+    };
+  }
+
+  function impliedVol(target, S, K, T, r, type) {
+    if (!(target > 0) || !(T > 0)) return null;
+    var floor = type === 'call' ? Math.max(S - K * Math.exp(-r * T), 0) : Math.max(K * Math.exp(-r * T) - S, 0);
+    if (target < floor - 1e-6) return { err: 'below' };
+    if (target > (type === 'call' ? S : K)) return { err: 'above' };
+    var lo = 0.0005, hi = 5;
+    for (var i = 0; i < 100; i++) {
+      var mid = (lo + hi) / 2;
+      if (price(S, K, T, r, mid, type) > target) hi = mid; else lo = mid;
+    }
+    return { sig: (lo + hi) / 2 };
+  }
+
+  /* ---------- colour ramps ---------- */
+
+  var RAMPS = {
+    call: [[247, 249, 248], [221, 235, 231], [178, 213, 205], [121, 183, 170], [54, 142, 127], [11, 110, 95], [7, 74, 64]],
+    put: [[250, 247, 245], [243, 227, 220], [234, 196, 183], [214, 148, 128], [186, 95, 72], [166, 61, 42], [122, 42, 28]]
+  };
+
+  function ramp(kind, t) {
+    var st = RAMPS[kind];
+    t = isFinite(t) ? clamp(t, 0, 1) : 0;
+    var x = t * (st.length - 1), i = Math.floor(x), f = x - i;
+    var a = st[i], b = st[Math.min(i + 1, st.length - 1)];
+    var c = a.map(function (v, k) { return Math.round(v + (b[k] - v) * f); });
+    return { css: 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')', lum: (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255 };
+  }
+
+  /* ---------- charts ---------- */
+
+  var PLOT = { w: 420, h: 176, ml: 40, mr: 10, mt: 12, mb: 26 };
+
+  function mkChart(cfg) {
+    var ml = PLOT.ml, mr = PLOT.mr, mt = PLOT.mt, mb = PLOT.mb, w = PLOT.w, h = PLOT.h;
+    var xMin = cfg.xMin, xMax = cfg.xMax, series = cfg.series, xFmt = cfg.xFmt, yFmt = cfg.yFmt;
+    var vLines = cfg.vLines || [], dots = cfg.dots || [], zero = cfg.zero || false;
+
+    var all = [];
+    series.forEach(function (s) { s.pts.forEach(function (p) { all.push(p[1]); }); });
+    var yMin = cfg.yMin !== undefined ? cfg.yMin : Math.min.apply(null, all);
+    var yMax = cfg.yMax !== undefined ? cfg.yMax : Math.max.apply(null, all);
+    if (yMax - yMin < 1e-9) { yMax = yMin + 1; }
+    var padY = (yMax - yMin) * 0.08;
+    yMin -= padY; yMax += padY;
+
+    var px = function (v) { return ml + (v - xMin) / ((xMax - xMin) || 1) * (w - ml - mr); };
+    var py = function (v) { return h - mb - (v - yMin) / ((yMax - yMin) || 1) * (h - mt - mb); };
+    var d = function (pts) {
+      return pts.map(function (p, i) { return (i ? 'L' : 'M') + px(p[0]).toFixed(1) + ' ' + py(p[1]).toFixed(1); }).join(' ');
+    };
+
+    var areas = [], paths = [];
+    series.forEach(function (s) {
+      if (s.fill) {
+        var base = clamp(0, yMin, yMax);
+        areas.push({
+          d: d(s.pts) + ' L ' + px(s.pts[s.pts.length - 1][0]).toFixed(1) + ' ' + py(base).toFixed(1) +
+            ' L ' + px(s.pts[0][0]).toFixed(1) + ' ' + py(base).toFixed(1) + ' Z',
+          fill: s.fill
+        });
+      }
+      paths.push({ d: d(s.pts), color: s.color, width: s.width || 1.6, dash: s.dash || '0' });
+    });
+
+    return {
+      title: cfg.title,
+      caption: cfg.caption,
+      legend: cfg.legend || series.filter(function (s) { return s.label; }).map(function (s) { return { label: s.label, color: s.color }; }),
+      plot: { x0: ml, x1: w - mr, y0: h - mb, y1: mt, labelLeft: ((ml - 6) / w * 100).toFixed(2) + '%' },
+      yTicks: lin(yMin + padY, yMax - padY, 4).map(function (v) {
+        return { y: py(v).toFixed(1), topPct: (py(v) / h * 100).toFixed(2) + '%', label: yFmt(v) };
+      }),
+      xTicks: lin(xMin, xMax, 5).map(function (v) {
+        return { leftPct: (px(v) / w * 100).toFixed(2) + '%', label: xFmt(v) };
+      }),
+      zero: zero,
+      zeroY: py(clamp(0, yMin, yMax)).toFixed(1),
+      vLines: vLines.map(function (v) {
+        return {
+          x: px(v.at).toFixed(1), color: v.color, label: v.label,
+          leftPct: ((px(v.at) + (v.side === 'left' ? -3 : 3)) / w * 100).toFixed(2) + '%',
+          topPct: ((h - mb) / h * 100).toFixed(2) + '%',
+          transform: v.side === 'left' ? 'translate(-100%,-115%)' : 'translate(0,-115%)'
+        };
+      }),
+      areas: areas,
+      paths: paths,
+      dots: dots.map(function (o) { return { x: px(o.x).toFixed(1), y: py(o.y).toFixed(1), color: o.color }; })
+    };
+  }
+
+  /* ---------- dates ---------- */
+
+  var TODAY = new Date();
+  var iso = function (dt) {
+    return dt.getFullYear() + '-' +
+      String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+      String(dt.getDate()).padStart(2, '0');
+  };
+  var addDays = function (dt, n) { return new Date(dt.getTime() + n * 86400000); };
+  var yearsTo = function (str) {
+    var target = new Date(str + 'T00:00:00').getTime();
+    if (isNaN(target)) return 0;
+    var t = (target - new Date(iso(TODAY) + 'T00:00:00').getTime()) / 86400000;
+    return Math.max(0, t) / 365;
+  };
+
+  /* ---------- presets ---------- */
+
+  var PRESETS = [
+    { name: 'At the money', hint: 'S=K · 90d · 25σ', v: { S: 100, K: 100, days: 90, sigma: 0.25, r: 0.045 } },
+    { name: 'OTM call', hint: '+10% strike · 30d', v: { S: 100, K: 110, days: 30, sigma: 0.28, r: 0.045 } },
+    { name: 'Earnings', hint: '7d · 70σ crush', v: { S: 100, K: 100, days: 7, sigma: 0.7, r: 0.045 } },
+    { name: 'LEAPS', hint: '2y · 30σ', v: { S: 100, K: 120, days: 730, sigma: 0.3, r: 0.045 } },
+    { name: 'Deep ITM put', hint: 'K=130 · 180d', v: { S: 100, K: 130, days: 180, sigma: 0.22, r: 0.045 } },
+    { name: 'Low vol index', hint: '60d · 12σ', v: { S: 450, K: 455, days: 60, sigma: 0.12, r: 0.045 } }
+  ];
+
+  /* ---------- state ---------- */
+
+  var state = {
+    S: 100, K: 100, expiry: iso(addDays(TODAY, 90)), sigma: 0.25, r: 0.045,
+    auto: true, minS: 80, maxS: 120, minSigma: 0.1, maxSigma: 0.5,
+    quoteText: '', quoteStatus: null, quoteChips: [],
+    marketPrice: 0, ivStatus: null, ivType: 'call',
+    legAType: 'call',
+    legB: { type: 'put', K: 95, expiry: iso(addDays(TODAY, 90)) },
+    activePreset: 'At the money'
+  };
+
+  function setState(patch) {
+    for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) state[k] = patch[k];
+    render();
+  }
+
+  /* ---------- quote parsing ---------- */
+
+  function parseQuote(text) {
+    var raw = text.trim();
+    if (!raw) {
+      return { status: { text: 'Paste an option quote and it fills spot, strike, expiry and solves implied volatility.', color: '#8A867C' }, chips: [] };
+    }
+    var tokens = raw.replace(/[,$]/g, ' ').split(/\s+/);
+    var date = tokens.filter(function (t) { return /^\d{4}-\d{2}-\d{2}$/.test(t); })[0];
+    var typeTok = tokens.filter(function (t) { return /^(c|p|call|put)$/i.test(t); })[0];
+    var atIdx = raw.indexOf('@');
+    var prem = atIdx >= 0 ? parseFloat(raw.slice(atIdx + 1).replace(/[^0-9.]/g, '')) : NaN;
+    var nums = tokens.filter(function (t) { return /^\d+(\.\d+)?$/.test(t); }).map(Number);
+    var ticker = (tokens.filter(function (t) {
+      return /^[A-Za-z.]{1,6}$/.test(t) && !/^(c|p|call|put)$/i.test(t);
+    })[0] || '').toUpperCase();
+    var numsNoPrem = isNaN(prem) ? nums : nums.filter(function (n, i) { return !(n === prem && i === nums.length - 1); });
+
+    if (numsNoPrem.length < 2 || !date) {
+      return { status: { text: 'Need at least: spot, C/P, strike, YYYY-MM-DD expiry — optionally “@ premium”.', color: '#A63D2A' }, chips: [] };
+    }
+
+    var type = /^(p|put)$/i.test(typeTok || '') ? 'put' : 'call';
+    var next = { S: numsNoPrem[0], K: numsNoPrem[1], expiry: date, ivType: type, activePreset: null };
+    if (!isNaN(prem)) next.marketPrice = prem;
+    var chips = [ticker || 'quote', type.toUpperCase(), 'S ' + next.S, 'K ' + next.K, date];
+    var statusText = 'Applied ' + (ticker ? ticker + ' ' : '') + type + ' ' + next.K + ' exp ' + date + '.';
+
+    if (!isNaN(prem)) {
+      var sol = impliedVol(prem, next.S, next.K, yearsTo(date), state.r, type);
+      if (sol && sol.sig) {
+        next.sigma = sol.sig;
+        chips.push('IV ' + (sol.sig * 100).toFixed(1) + '%');
+        statusText += ' Implied σ = ' + (sol.sig * 100).toFixed(1) + '%.';
+      } else {
+        statusText += ' Premium is outside no-arbitrage bounds, σ left as is.';
+      }
+    } else {
+      statusText += ' Add “@ premium” to back out implied volatility.';
+    }
+
+    return { next: next, status: { text: statusText, color: '#0B6E5F' }, chips: chips };
+  }
+
+  /* ---------- actions ---------- */
+
+  function numIn(key, min, value) {
+    var v = parseFloat(value);
+    var patch = { activePreset: null };
+    patch[key] = isNaN(v) ? 0 : Math.max(min, v);
+    setState(patch);
+  }
+
+  function applyPreset(p) {
+    setState({
+      S: p.v.S, K: p.v.K, sigma: p.v.sigma, r: p.v.r,
+      expiry: iso(addDays(TODAY, p.v.days)),
+      activePreset: p.name, ivStatus: null,
+      legB: { type: 'put', K: +(p.v.K * 0.95).toFixed(2), expiry: iso(addDays(TODAY, p.v.days)) }
+    });
+  }
+
+  function solveIV() {
+    var T = yearsTo(state.expiry);
+    var sol = impliedVol(state.marketPrice, state.S, state.K, T, state.r, state.ivType);
+    if (!sol) return setState({ ivStatus: { text: 'Enter a positive market price and a future expiry.', color: '#A63D2A' } });
+    if (sol.err === 'below') return setState({ ivStatus: { text: 'Price is below intrinsic value — no volatility can produce it.', color: '#A63D2A' } });
+    if (sol.err === 'above') return setState({ ivStatus: { text: 'Price exceeds the theoretical maximum for this contract.', color: '#A63D2A' } });
+    setState({
+      sigma: sol.sig, activePreset: null,
+      ivStatus: {
+        text: 'Solved σ = ' + (sol.sig * 100).toFixed(2) + '% — the volatility that reprices this ' + state.ivType + ' at ' + state.marketPrice + '.',
+        color: '#0B6E5F'
+      }
+    });
+  }
+
+  /* ---------- derived values ---------- */
+
+  function computeVals() {
+    var s = state;
+    var T = yearsTo(s.expiry), days = Math.round(T * 365);
+    var S = s.S, K = s.K, r = s.r, sigma = s.sigma;
+
+    var c = price(S, K, T, r, sigma, 'call'), p = price(S, K, T, r, sigma, 'put');
+    var gc = greeks(S, K, T, r, sigma, 'call'), gp = greeks(S, K, T, r, sigma, 'put');
+    var m2 = function (n) { return (isFinite(n) ? n : 0).toFixed(2); };
+    var money = function (n) { return '$' + m2(n); };
+    var dd = (T > 0 && sigma > 0 && S > 0 && K > 0) ? ds(S, K, T, r, sigma) : { d1: 0, d2: 0 };
+
+    var ciCall = Math.max(S - K, 0), ciPut = Math.max(K - S, 0);
+    var beCall = K + c, bePut = K - p;
+
+    var lo = s.auto ? S * 0.8 : s.minS, hi = s.auto ? S * 1.2 : s.maxS;
+    var vlo = s.auto ? Math.max(0.02, sigma * 0.4) : s.minSigma;
+    var vhi = s.auto ? Math.min(2, Math.max(sigma * 1.9, sigma + 0.15)) : s.maxSigma;
+    var n = 9;
+    var Sr = lin(lo, hi, n), vr = lin(vlo, vhi, n);
+
+    var heat = function (type, kind, color, title) {
+      var z = Sr.map(function (Sv) { return vr.map(function (vv) { return price(Sv, K, T, r, vv, type); }); });
+      var flat = [];
+      z.forEach(function (row) { row.forEach(function (v) { flat.push(v); }); });
+      var zlo = Math.min.apply(null, flat), zhi = Math.max.apply(null, flat), span = (zhi - zlo) || 1;
+      var nearest = function (v) {
+        return Math.abs(v - sigma) === Math.min.apply(null, vr.map(function (x) { return Math.abs(x - sigma); }));
+      };
+      var nearestS = function (v) {
+        return Math.abs(v - S) === Math.min.apply(null, Sr.map(function (x) { return Math.abs(x - S); }));
+      };
+      var rows = z.map(function (row, i) {
+        return row.map(function (v, j) {
+          var col = ramp(kind, (v - zlo) / span);
+          var mark = nearestS(Sr[i]) && nearest(vr[j]);
+          return { bg: col.css, fg: col.lum > 0.62 ? '#3C3A34' : '#FFFFFF', text: v.toFixed(1), ring: mark ? '2px solid #15161A' : 'none' };
+        });
+      }).reverse();
+      return {
+        title: title, color: color, range: zlo.toFixed(1) + ' – ' + zhi.toFixed(1), rows: rows,
+        yLabels: Sr.slice().reverse().map(function (v) { return v.toFixed(0); }),
+        xLabels: vr.map(function (v) { return (v * 100).toFixed(0) + '%'; })
+      };
+    };
+
+    var spotPts = lin(K * 0.55, K * 1.45, 60);
+    var spotChart = mkChart({
+      title: 'Value vs spot',
+      caption: 'Solid lines are today’s model value; dashes are intrinsic value at expiry.',
+      xMin: spotPts[0], xMax: spotPts[spotPts.length - 1],
+      xFmt: function (v) { return v.toFixed(0); },
+      yFmt: function (v) { return v.toFixed(0); },
+      series: [
+        { label: 'Call', color: '#0B6E5F', pts: spotPts.map(function (x) { return [x, price(x, K, T, r, sigma, 'call')]; }) },
+        { label: 'Put', color: '#A63D2A', pts: spotPts.map(function (x) { return [x, price(x, K, T, r, sigma, 'put')]; }) },
+        { color: '#0B6E5F', dash: '3 3', width: 1, pts: spotPts.map(function (x) { return [x, Math.max(x - K, 0)]; }) },
+        { color: '#A63D2A', dash: '3 3', width: 1, pts: spotPts.map(function (x) { return [x, Math.max(K - x, 0)]; }) }
+      ],
+      vLines: [{ at: S, color: '#8A867C', label: 'S', side: 'right' }, { at: K, color: '#C9C4B8', label: 'K', side: 'left' }]
+    });
+
+    var payoffPts = lin(K * 0.6, K * 1.4, 60);
+    var payChart = mkChart({
+      title: 'Call P&L at expiry vs today',
+      caption: 'Long one call paid ' + money(c) + '. Break-even ' + money(beCall) + ' at expiry.',
+      xMin: payoffPts[0], xMax: payoffPts[payoffPts.length - 1], zero: true,
+      xFmt: function (v) { return v.toFixed(0); },
+      yFmt: function (v) { return (v >= 0 ? '+' : '') + v.toFixed(0); },
+      series: [
+        { label: 'At expiry', color: '#15161A', pts: payoffPts.map(function (x) { return [x, Math.max(x - K, 0) - c]; }), fill: 'rgba(21,22,26,0.06)' },
+        { label: 'Today', color: '#0B6E5F', dash: '4 3', pts: payoffPts.map(function (x) { return [x, price(x, K, T, r, sigma, 'call') - c]; }) }
+      ],
+      vLines: [{ at: beCall, color: '#0B6E5F', label: 'B/E', side: 'right' }, { at: S, color: '#8A867C', label: 'S', side: 'left' }]
+    });
+
+    var volPts = lin(0.02, Math.max(0.8, sigma * 2), 60);
+    var volChart = mkChart({
+      title: 'Value vs volatility',
+      caption: 'At today’s σ each extra volatility point adds ' + money(gc.vega) + ' to the call.',
+      xMin: volPts[0], xMax: volPts[volPts.length - 1],
+      xFmt: function (v) { return (v * 100).toFixed(0) + '%'; },
+      yFmt: function (v) { return v.toFixed(0); },
+      series: [
+        { label: 'Call', color: '#0B6E5F', pts: volPts.map(function (x) { return [x, price(S, K, T, r, x, 'call')]; }) },
+        { label: 'Put', color: '#A63D2A', pts: volPts.map(function (x) { return [x, price(S, K, T, r, x, 'put')]; }) }
+      ],
+      vLines: [{ at: sigma, color: '#8A867C', label: 'σ', side: 'right' }],
+      dots: [{ x: sigma, y: c, color: '#0B6E5F' }, { x: sigma, y: p, color: '#A63D2A' }]
+    });
+
+    var maxD = Math.max(days, 30);
+    var decayPts = lin(maxD, 0.5, 60);
+    var decayChart = mkChart({
+      title: 'Time decay',
+      caption: 'Held at today’s spot and σ, this call loses about ' + money(Math.abs(gc.theta)) + ' per day right now.',
+      xMin: 0, xMax: maxD,
+      xFmt: function (v) { return v.toFixed(0) + 'd'; },
+      yFmt: function (v) { return v.toFixed(0); },
+      series: [
+        { label: 'Call', color: '#0B6E5F', pts: decayPts.map(function (d) { return [d, price(S, K, d / 365, r, sigma, 'call')]; }).reverse() },
+        { label: 'Put', color: '#A63D2A', pts: decayPts.map(function (d) { return [d, price(S, K, d / 365, r, sigma, 'put')]; }).reverse() }
+      ],
+      vLines: [{ at: days, color: '#8A867C', label: 'now', side: 'left' }]
+    });
+
+    var parityLhs = c - p, parityRhs = S - K * Math.exp(-r * T), resid = parityLhs - parityRhs;
+    var ok = Math.abs(resid) < 0.01;
+
+    var legPrice = function (leg) {
+      var lt = yearsTo(leg.expiry);
+      var pr = price(S, leg.K, lt, r, sigma, leg.type);
+      var g = greeks(S, leg.K, lt, r, sigma, leg.type);
+      var be = leg.type === 'call' ? leg.K + pr : leg.K - pr;
+      return { pr: pr, g: g, be: be, lt: lt };
+    };
+    var A = legPrice({ type: s.legAType, K: K, expiry: s.expiry });
+    var B = legPrice(s.legB);
+    var cmp = function (label, av, bv, fmt) {
+      var dv = bv - av;
+      return {
+        label: label, a: fmt(av), b: fmt(bv),
+        diff: (dv >= 0 ? '+' : '') + fmt(dv).replace('+', ''),
+        diffColor: Math.abs(dv) < 1e-9 ? '#A5A197' : (dv > 0 ? '#0B6E5F' : '#A63D2A')
+      };
+    };
+
+    var interp = [];
+    interp.push({
+      tag: '01',
+      text: 'A ' + days + '-day ' + (K === S ? 'at-the-money' : (K > S ? 'higher-strike' : 'lower-strike')) +
+        ' call is worth ' + money(c) + ', of which ' + money(ciCall) + ' is intrinsic and ' + money(c - ciCall) +
+        ' is time value you lose by holding.'
+    });
+    interp.push({
+      tag: '02',
+      text: 'Delta ' + gc.delta.toFixed(2) + ' means the call gains roughly ' + money(gc.delta) +
+        ' per $1 move up, and behaves like ' + (gc.delta * 100).toFixed(0) + ' shares. Gamma ' + gc.gamma.toFixed(4) +
+        ' says that exposure shifts ' + (gc.gamma * 100).toFixed(1) + ' delta points per $1.'
+    });
+    interp.push({
+      tag: '03',
+      text: 'The market implies a ' + (gc.probITM * 100).toFixed(0) + '% chance the call finishes in the money, but you only profit above ' +
+        money(beCall) + ' — ' + ((beCall / S - 1) * 100).toFixed(1) + '% from here.'
+    });
+    interp.push({
+      tag: '04',
+      text: 'Vega ' + money(gc.vega) + ' against theta ' + money(gc.theta) + ' per day: ' +
+        (Math.abs(gc.vega) > Math.abs(gc.theta) * 5
+          ? 'this position is far more a volatility bet than a decay race'
+          : 'decay is material relative to the volatility exposure — timing matters') + '.'
+    });
+    if (T <= 0) interp.push({ tag: '05', text: 'Expiry is today or past, so values collapse to intrinsic. Pick a future date to see the model work.' });
+
+    return {
+      S: S, K: K, r: r, sigma: sigma, expiry: s.expiry,
+      minS: +lo.toFixed(2), maxS: +hi.toFixed(2), minSigma: +vlo.toFixed(3), maxSigma: +vhi.toFixed(3),
+      marketPrice: s.marketPrice, quoteText: s.quoteText,
+      autoToggle: { track: s.auto ? '#0B6E5F' : '#D5D1C7', knobLeft: s.auto ? '13px' : '2px' },
+      rangeLocked: s.auto, rangeBg: s.auto ? '#F4F3EF' : '#FFFFFF',
+      heatSubtitle: s.auto
+        ? 'Auto: spot ±20% of ' + m2(S) + ', σ from ' + (vlo * 100).toFixed(0) + '% to ' + (vhi * 100).toFixed(0) +
+          '% around today’s ' + (sigma * 100).toFixed(0) + '%. Outlined cell is your current point.'
+        : 'Manual ranges. Outlined cell is the closest point to your inputs.',
+      callPrice: money(c), putPrice: money(p),
+      callIntrinsic: money(ciCall), callExtrinsic: money(c - ciCall),
+      putIntrinsic: money(ciPut), putExtrinsic: money(p - ciPut),
+      moneynessCall: S > K * 1.001 ? 'in the money' : (S < K * 0.999 ? 'out of the money' : 'at the money'),
+      moneynessPut: S < K * 0.999 ? 'in the money' : (S > K * 1.001 ? 'out of the money' : 'at the money'),
+      moneynessRatio: (S / (K || 1)).toFixed(3),
+      dteLabel: days + (days === 1 ? ' day' : ' days'),
+      TLabel: T.toFixed(3),
+      sigmaPct: (sigma * 100).toFixed(1) + '%',
+      rPct: (r * 100).toFixed(2) + '%',
+      ivTypeLabel: s.ivType,
+      quoteStatus: s.quoteStatus || { text: 'Paste an option quote and it fills spot, strike, expiry and solves implied volatility.', color: '#8A867C' },
+      quoteChips: s.quoteChips,
+      ivStatus: s.ivStatus || { text: 'Enter what the option trades at and solve for the volatility the market is charging.', color: '#8A867C' },
+      readouts: [
+        { label: 'Break-even call', value: money(beCall) },
+        { label: 'Break-even put', value: money(bePut) },
+        { label: 'Prob ITM call', value: (gc.probITM * 100).toFixed(1) + '%' },
+        { label: 'Prob ITM put', value: (gp.probITM * 100).toFixed(1) + '%' }
+      ],
+      parity: {
+        lhs: m2(parityLhs), rhs: m2(parityRhs), residual: resid.toFixed(4),
+        badge: ok ? 'holds' : 'check inputs',
+        badgeBg: ok ? '#E6F0ED' : '#F7E9E4',
+        badgeFg: ok ? '#0B6E5F' : '#A63D2A',
+        note: ok ? 'prices are internally consistent' : 'expiry may be today, so both sides collapse to intrinsic'
+      },
+      presets: PRESETS.map(function (pp) {
+        var on = s.activePreset === pp.name;
+        return {
+          name: pp.name, hint: pp.hint,
+          border: on ? '#0B6E5F' : '#E2DFD7',
+          bg: on ? '#F0F3F1' : '#FFFFFF',
+          fg: on ? '#0B6E5F' : '#15161A'
+        };
+      }),
+      charts: [spotChart, payChart, volChart, decayChart],
+      heatmaps: [heat('call', 'call', '#0B6E5F', 'Call price'), heat('put', 'put', '#A63D2A', 'Put price')],
+      greekRows: [
+        { name: 'Delta', unit: 'per $1 of spot', call: gc.delta.toFixed(3), put: gp.delta.toFixed(3) },
+        { name: 'Gamma', unit: 'delta change per $1', call: gc.gamma.toFixed(4), put: gp.gamma.toFixed(4) },
+        { name: 'Vega', unit: 'per 1 vol point', call: money(gc.vega), put: money(gp.vega) },
+        { name: 'Theta', unit: 'per calendar day', call: money(gc.theta), put: money(gp.theta) },
+        { name: 'Rho', unit: 'per 1% in rates', call: money(gc.rho), put: money(gp.rho) }
+      ],
+      interpretation: interp,
+      dValues: [
+        { label: 'd₁', value: dd.d1.toFixed(4) },
+        { label: 'd₂', value: dd.d2.toFixed(4) },
+        { label: 'Φ(d₁)', value: N(dd.d1).toFixed(4) },
+        { label: 'Φ(d₂)', value: N(dd.d2).toFixed(4) },
+        { label: 'Ke⁻ʳᵀ', value: m2(K * Math.exp(-r * T)) }
+      ],
+      legA: { type: s.legAType, strike: K, expiry: s.expiry },
+      legB: { type: s.legB.type, strike: s.legB.K, expiry: s.legB.expiry },
+      compareRows: [
+        cmp('Model price', A.pr, B.pr, money),
+        cmp('Delta', A.g.delta, B.g.delta, function (v) { return v.toFixed(3); }),
+        cmp('Gamma', A.g.gamma, B.g.gamma, function (v) { return v.toFixed(4); }),
+        cmp('Vega (1 vol pt)', A.g.vega, B.g.vega, money),
+        cmp('Theta (per day)', A.g.theta, B.g.theta, money),
+        cmp('Break-even', A.be, B.be, money),
+        cmp('Prob ITM', A.g.probITM * 100, B.g.probITM * 100, function (v) { return v.toFixed(1) + '%'; }),
+        cmp('Days to expiry', Math.round(A.lt * 365), Math.round(B.lt * 365), function (v) { return v.toFixed(0); })
+      ]
+    };
+  }
+
+  /* ---------- view helpers ---------- */
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(v) {
+    return String(v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function text(id, value) { $(id).textContent = value; }
+
+  function setInput(el, value) {
+    if (document.activeElement !== el && el.value !== String(value)) el.value = value;
+  }
+
+  function chartHTML(ch) {
+    var svg = '';
+    ch.yTicks.forEach(function (t) {
+      svg += '<line x1="' + ch.plot.x0 + '" x2="' + ch.plot.x1 + '" y1="' + t.y + '" y2="' + t.y + '" stroke="#EDEAE3" stroke-width="1"></line>';
+    });
+    if (ch.zero) {
+      svg += '<line x1="' + ch.plot.x0 + '" x2="' + ch.plot.x1 + '" y1="' + ch.zeroY + '" y2="' + ch.zeroY + '" stroke="#C9C4B8" stroke-width="1"></line>';
+    }
+    ch.vLines.forEach(function (v) {
+      svg += '<line x1="' + v.x + '" x2="' + v.x + '" y1="' + ch.plot.y0 + '" y2="' + ch.plot.y1 + '" stroke="' + v.color + '" stroke-width="1" stroke-dasharray="3 3"></line>';
+    });
+    ch.areas.forEach(function (a) {
+      svg += '<path d="' + a.d + '" fill="' + a.fill + '" stroke="none"></path>';
+    });
+    ch.paths.forEach(function (p) {
+      svg += '<path d="' + p.d + '" fill="none" stroke="' + p.color + '" stroke-width="' + p.width + '" stroke-dasharray="' + p.dash + '" stroke-linejoin="round"></path>';
+    });
+    ch.dots.forEach(function (d) {
+      svg += '<circle cx="' + d.x + '" cy="' + d.y + '" r="3" fill="' + d.color + '" stroke="#FFFFFF" stroke-width="1.5"></circle>';
+    });
+
+    var legend = ch.legend.map(function (l) {
+      return '<div style="display:flex; align-items:center; gap:4px; color:#6E6B63"><span style="width:9px; height:2px; background:' + l.color + '"></span>' + esc(l.label) + '</div>';
+    }).join('');
+
+    var yLabels = ch.yTicks.map(function (t) {
+      return '<div style="position:absolute; left:' + ch.plot.labelLeft + '; top:' + t.topPct + '; transform:translate(-100%,-50%); font-family:\'IBM Plex Mono\',monospace; font-size:9px; color:#A5A197; white-space:nowrap">' + esc(t.label) + '</div>';
+    }).join('');
+
+    var xLabels = ch.xTicks.map(function (t) {
+      return '<div style="position:absolute; left:' + t.leftPct + '; bottom:0; transform:translateX(-50%); font-family:\'IBM Plex Mono\',monospace; font-size:9px; color:#A5A197; white-space:nowrap">' + esc(t.label) + '</div>';
+    }).join('');
+
+    var vLabels = ch.vLines.map(function (v) {
+      return '<div style="position:absolute; left:' + v.leftPct + '; top:' + v.topPct + '; transform:' + v.transform + '; font-family:\'IBM Plex Mono\',monospace; font-size:9px; color:' + v.color + '; white-space:nowrap">' + esc(v.label) + '</div>';
+    }).join('');
+
+    return '<div style="background:#FFFFFF; border:1px solid #E2DFD7; border-radius:3px; padding:13px 14px 10px; display:flex; flex-direction:column; gap:8px; min-width:0">' +
+      '<div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px">' +
+      '<div style="font-size:13px; font-weight:600; letter-spacing:-0.01em">' + esc(ch.title) + '</div>' +
+      '<div style="display:flex; gap:10px; font-family:\'IBM Plex Mono\',monospace; font-size:9.5px; letter-spacing:0.06em; text-transform:uppercase">' + legend + '</div>' +
+      '</div>' +
+      '<div style="position:relative">' +
+      '<svg viewBox="0 0 420 176" style="width:100%; height:auto; display:block; overflow:visible">' + svg + '</svg>' +
+      yLabels + xLabels + vLabels +
+      '</div>' +
+      '<div style="font-size:11px; color:#8A867C; line-height:1.45">' + esc(ch.caption) + '</div>' +
+      '</div>';
+  }
+
+  function heatHTML(hm) {
+    var yLabels = hm.yLabels.map(function (l) {
+      return '<div style="flex:1; display:flex; align-items:center; justify-content:flex-end">' + esc(l) + '</div>';
+    }).join('');
+
+    var rows = hm.rows.map(function (row) {
+      var cells = row.map(function (cell) {
+        return '<div style="flex:1; min-width:0; height:26px; display:flex; align-items:center; justify-content:center; font-family:\'IBM Plex Mono\',monospace; font-size:9.5px; background:' +
+          cell.bg + '; color:' + cell.fg + '; outline:' + cell.ring + '">' + esc(cell.text) + '</div>';
+      }).join('');
+      return '<div style="display:flex; gap:1px">' + cells + '</div>';
+    }).join('');
+
+    var xLabels = hm.xLabels.map(function (l) {
+      return '<div style="flex:1; min-width:0; text-align:center; font-family:\'IBM Plex Mono\',monospace; font-size:9.5px; color:#8A867C">' + esc(l) + '</div>';
+    }).join('');
+
+    return '<div style="display:flex; flex-direction:column; gap:6px; min-width:0">' +
+      '<div style="display:flex; align-items:baseline; justify-content:space-between">' +
+      '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:' + hm.color + '">' + esc(hm.title) + '</div>' +
+      '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:10px; color:#8A867C">' + esc(hm.range) + '</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:6px; min-width:0">' +
+      '<div style="display:flex; flex-direction:column; justify-content:space-between; font-family:\'IBM Plex Mono\',monospace; font-size:9.5px; color:#8A867C; text-align:right; padding:1px 0">' + yLabels + '</div>' +
+      '<div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:1px">' + rows +
+      '<div style="display:flex; gap:1px; padding-top:3px">' + xLabels + '</div>' +
+      '<div style="text-align:center; font-size:10.5px; color:#A5A197; padding-top:2px">volatility σ →</div>' +
+      '</div></div></div>';
+  }
+
+  /* ---------- render ---------- */
+
+  function render() {
+    var v = computeVals();
+
+    text('moneynessCall', v.moneynessCall);
+    text('callPrice', v.callPrice);
+    text('callIntrinsic', v.callIntrinsic);
+    text('callExtrinsic', v.callExtrinsic);
+
+    text('moneynessPut', v.moneynessPut);
+    text('putPrice', v.putPrice);
+    text('putIntrinsic', v.putIntrinsic);
+    text('putExtrinsic', v.putExtrinsic);
+
+    $('readouts').innerHTML = v.readouts.map(function (m) {
+      return '<div style="display:flex; flex-direction:column; gap:3px">' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8A867C">' + esc(m.label) + '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:16px; color:#15161A">' + esc(m.value) + '</div>' +
+        '</div>';
+    }).join('');
+
+    var badge = $('parityBadge');
+    badge.textContent = v.parity.badge;
+    badge.style.background = v.parity.badgeBg;
+    badge.style.color = v.parity.badgeFg;
+    text('parityLhs', v.parity.lhs);
+    text('parityRhs', v.parity.rhs);
+    text('parityResidual', v.parity.residual);
+    text('parityNote', v.parity.note);
+
+    setInput($('inQuote'), v.quoteText);
+    var qs = $('quoteStatus');
+    qs.textContent = v.quoteStatus.text;
+    qs.style.color = v.quoteStatus.color;
+    $('quoteChips').innerHTML = v.quoteChips.map(function (c) {
+      return '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:10.5px; padding:3px 7px; border-radius:2px; background:#F0F3F1; color:#0B6E5F; border:1px solid #D6E4E0">' + esc(c) + '</div>';
+    }).join('');
+
+    $('presets').innerHTML = v.presets.map(function (p, i) {
+      return '<div class="preset" data-a="preset" data-i="' + i + '" style="font-size:12px; padding:7px 9px; border-radius:2px; cursor:pointer; border:1px solid ' + p.border +
+        '; background:' + p.bg + '; color:' + p.fg + '; display:flex; flex-direction:column; gap:2px">' +
+        '<span style="font-weight:500">' + esc(p.name) + '</span>' +
+        '<span style="font-family:\'IBM Plex Mono\',monospace; font-size:10px; opacity:0.7">' + esc(p.hint) + '</span>' +
+        '</div>';
+    }).join('');
+
+    setInput($('inS'), v.S);
+    setInput($('inK'), v.K);
+    setInput($('inExpiry'), v.expiry);
+    setInput($('inSigma'), v.sigma);
+    setInput($('inR'), v.r);
+    text('moneynessRatio', v.moneynessRatio);
+    text('dteLabel', v.dteLabel);
+    text('TLabel', v.TLabel);
+    text('sigmaPct', v.sigmaPct);
+    text('rPct', v.rPct);
+
+    text('ivTypeLabel', v.ivTypeLabel);
+    setInput($('inMarketPrice'), v.marketPrice);
+    var ivs = $('ivStatus');
+    ivs.textContent = v.ivStatus.text;
+    ivs.style.color = v.ivStatus.color;
+
+    $('charts').innerHTML = v.charts.map(chartHTML).join('');
+
+    text('heatSubtitle', v.heatSubtitle);
+    $('autoTrack').style.background = v.autoToggle.track;
+    $('autoKnob').style.left = v.autoToggle.knobLeft;
+    ['inMinS', 'inMaxS', 'inMinSigma', 'inMaxSigma'].forEach(function (id) {
+      var el = $(id);
+      el.disabled = v.rangeLocked;
+      el.style.background = v.rangeBg;
+    });
+    setInput($('inMinS'), v.minS);
+    setInput($('inMaxS'), v.maxS);
+    setInput($('inMinSigma'), v.minSigma);
+    setInput($('inMaxSigma'), v.maxSigma);
+    $('heatmaps').innerHTML = v.heatmaps.map(heatHTML).join('');
+
+    setInput($('legAType'), v.legA.type);
+    setInput($('legAStrike'), v.legA.strike);
+    setInput($('legAExpiry'), v.legA.expiry);
+    setInput($('legBType'), v.legB.type);
+    setInput($('legBStrike'), v.legB.strike);
+    setInput($('legBExpiry'), v.legB.expiry);
+
+    $('compareRows').innerHTML = v.compareRows.map(function (row) {
+      return '<div style="font-size:12px; color:#6E6B63; padding:7px 0; border-top:1px solid #F0EDE6">' + esc(row.label) + '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:13px; padding:7px 0; border-top:1px solid #F0EDE6">' + esc(row.a) + '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:13px; padding:7px 0; border-top:1px solid #F0EDE6">' + esc(row.b) + '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:12.5px; text-align:right; padding:7px 0; border-top:1px solid #F0EDE6; color:' + row.diffColor + '">' + esc(row.diff) + '</div>';
+    }).join('');
+
+    $('greekRows').innerHTML = v.greekRows.map(function (g) {
+      return '<div style="display:flex; flex-direction:column; gap:1px; padding:7px 0; border-top:1px solid #F0EDE6">' +
+        '<span style="font-size:12.5px; color:#15161A">' + esc(g.name) + '</span>' +
+        '<span style="font-size:10.5px; color:#A5A197; line-height:1.3">' + esc(g.unit) + '</span>' +
+        '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:13.5px; text-align:right; padding:7px 0; border-top:1px solid #F0EDE6">' + esc(g.call) + '</div>' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace; font-size:13.5px; text-align:right; padding:7px 0; border-top:1px solid #F0EDE6">' + esc(g.put) + '</div>';
+    }).join('');
+
+    $('interpretation').innerHTML = v.interpretation.map(function (line) {
+      return '<div style="display:flex; gap:9px; align-items:flex-start">' +
+        '<span style="font-family:\'IBM Plex Mono\',monospace; font-size:11px; color:#5FB3A2; padding-top:2px">' + esc(line.tag) + '</span>' +
+        '<span style="font-size:12.5px; line-height:1.5; color:#EFEDE7; text-wrap:pretty">' + esc(line.text) + '</span>' +
+        '</div>';
+    }).join('');
+
+    $('dValues').innerHTML = v.dValues.map(function (d) {
+      return '<div style="display:flex; justify-content:space-between"><span style="color:#8A867C">' + esc(d.label) + '</span><span>' + esc(d.value) + '</span></div>';
+    }).join('');
+
+    reportHeight();
+  }
+
+  /* ---------- events ---------- */
+
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    var a = el.getAttribute && el.getAttribute('data-a');
+    if (!a) return;
+
+    switch (a) {
+      case 'S': return numIn('S', 0.01, el.value);
+      case 'K': return numIn('K', 0.01, el.value);
+      case 'minS': return numIn('minS', 0.01, el.value);
+      case 'maxS': return numIn('maxS', 0.01, el.value);
+      case 'minSigma': return numIn('minSigma', 0.001, el.value);
+      case 'maxSigma': return numIn('maxSigma', 0.001, el.value);
+      case 'marketPrice': return numIn('marketPrice', 0, el.value);
+      case 'expiry': return setState({ expiry: el.value, activePreset: null });
+      case 'sigma': return setState({ sigma: parseFloat(el.value), activePreset: null });
+      case 'r': return setState({ r: parseFloat(el.value), activePreset: null });
+      case 'quote': {
+        var res = parseQuote(el.value);
+        var patch = { quoteText: el.value, quoteStatus: res.status, quoteChips: res.chips };
+        if (res.next) for (var k in res.next) patch[k] = res.next[k];
+        return setState(patch);
+      }
+      case 'legAType': return setState({ legAType: el.value });
+      case 'legBType': return setState({ legB: { type: el.value, K: state.legB.K, expiry: state.legB.expiry } });
+      case 'legBStrike': {
+        var sv = parseFloat(el.value);
+        return setState({ legB: { type: state.legB.type, K: isNaN(sv) ? 1 : Math.max(0.01, sv), expiry: state.legB.expiry } });
+      }
+      case 'legBExpiry': return setState({ legB: { type: state.legB.type, K: state.legB.K, expiry: el.value } });
+      default: return;
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    var a = el.getAttribute && el.getAttribute('data-a');
+    if (a === 'legAType' || a === 'legBType') {
+      if (a === 'legAType') setState({ legAType: el.value });
+      else setState({ legB: { type: el.value, K: state.legB.K, expiry: state.legB.expiry } });
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    while (el && el !== document.body) {
+      var a = el.getAttribute && el.getAttribute('data-a');
+      if (a === 'solveIV') return solveIV();
+      if (a === 'toggleAuto') return setState({ auto: !state.auto });
+      if (a === 'reset') return applyPreset(PRESETS[0]);
+      if (a === 'preset') return applyPreset(PRESETS[parseInt(el.getAttribute('data-i'), 10)]);
+      el = el.parentNode;
+    }
+  });
+
+  /* ---------- height reporting (Streamlit embed) ---------- */
+
+  var lastHeight = 0;
+
+  // Measure the content wrapper rather than documentElement.scrollHeight: the
+  // page carries min-height:100vh, so inside an iframe scrollHeight would echo
+  // back whatever height we just set and the two would ratchet upward forever.
+  function contentHeight() {
+    var inner = $('deskInner'), root = $('deskRoot');
+    if (!inner || !root) return 0;
+    var cs = getComputedStyle(root);
+    return Math.ceil(inner.getBoundingClientRect().height +
+      parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
+  }
+
+  function reportHeight() {
+    if (window.parent === window) return;
+    var h = contentHeight();
+    if (!h || Math.abs(h - lastHeight) < 2) return;
+    lastHeight = h;
+    // Streamlit's components.html renders a same-origin srcdoc iframe that
+    // ignores the component height protocol, so size the frame directly and
+    // keep the postMessage path for real component hosts.
+    try {
+      var fe = window.frameElement;
+      if (fe) {
+        fe.style.height = h + 'px';
+        fe.setAttribute('height', h);
+        // Streamlit sizes the element container to the Python-side `height`
+        // argument; keep that box in sync so the layout below us is correct.
+        var host = fe.parentElement;
+        if (host && host.getAttribute('data-testid') === 'stElementContainer') {
+          host.style.height = h + 'px';
+        }
+      }
+    } catch (err) { /* cross-origin host — fall through to postMessage */ }
+    try {
+      window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: h }, '*');
+    } catch (err) { /* embedded elsewhere — ignore */ }
+  }
+
+  window.addEventListener('resize', reportHeight);
+  window.addEventListener('load', reportHeight);
+  if (window.ResizeObserver) {
+    new ResizeObserver(reportHeight).observe(document.body);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

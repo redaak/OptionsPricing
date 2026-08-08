@@ -1,180 +1,159 @@
-import streamlit as st
+"""Black-Scholes Options Pricing Desk.
+
+Streamlit entry point. The interface lives in ``desk.html`` — a self-contained
+page that prices European options, backs out implied volatility, renders the
+Greeks, the price surface and the payoff charts entirely client side. This
+module serves that page and keeps a reference implementation of the pricing
+formula in Python so the model can be imported and tested on its own.
+"""
+
+from pathlib import Path
+
 import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import streamlit as st
+import streamlit.components.v1 as components
 from scipy.stats import norm
 
+BASE_DIR = Path(__file__).parent
+DESK_HTML = BASE_DIR / "desk.html"
+FAVICON = BASE_DIR / "static" / "favicon-32x32.png"
 
-# Black-Scholes pricing function
-def black_scholes(S, K, T, r, sigma, option_type='call'):
+# Fallback height for the embedded desk. The page reports its real height back
+# through the Streamlit component channel as soon as it renders, so this only
+# matters for the first paint and for browsers that block postMessage.
+FALLBACK_HEIGHT = 1650
+
+
+def black_scholes(S, K, T, r, sigma, option_type="call"):
+    """Price a European option with the Black-Scholes formula.
+
+    Args:
+        S: Current price of the underlying asset.
+        K: Strike price.
+        T: Time to maturity, in years.
+        r: Continuously compounded risk-free rate.
+        sigma: Annualised volatility of the underlying.
+        option_type: Either ``"call"`` or ``"put"``.
+
+    Returns:
+        The theoretical option price.
+
+    Raises:
+        ValueError: If ``option_type`` is neither ``"call"`` nor ``"put"``.
+    """
+    if option_type not in ("call", "put"):
+        raise ValueError("Invalid option type. Use 'call' or 'put'.")
+
+    # At or past expiry, or with no volatility, the option is worth its
+    # intrinsic value and the d1/d2 terms are undefined.
+    if T <= 0 or sigma <= 0:
+        return max(S - K, 0.0) if option_type == "call" else max(K - S, 0.0)
+
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
 
-    if option_type == 'call':
-        option_price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-    elif option_type == 'put':
-        option_price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    else:
+    if option_type == "call":
+        return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    return K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+
+
+def greeks(S, K, T, r, sigma, option_type="call"):
+    """Return delta, gamma, vega, theta, rho and the risk-neutral P(ITM).
+
+    Vega is quoted per volatility point, theta per calendar day and rho per
+    1% move in rates, matching the units shown in the interface.
+    """
+    if option_type not in ("call", "put"):
         raise ValueError("Invalid option type. Use 'call' or 'put'.")
 
-    return option_price
+    if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
+        return {"delta": 0.0, "gamma": 0.0, "vega": 0.0, "theta": 0.0, "rho": 0.0, "prob_itm": 0.0}
+
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    sqrt_t = np.sqrt(T)
+    disc = np.exp(-r * T)
+    pdf = norm.pdf(d1)
+    is_call = option_type == "call"
+
+    if is_call:
+        theta = -S * pdf * sigma / (2 * sqrt_t) - r * K * disc * norm.cdf(d2)
+    else:
+        theta = -S * pdf * sigma / (2 * sqrt_t) + r * K * disc * norm.cdf(-d2)
+
+    return {
+        "delta": norm.cdf(d1) if is_call else norm.cdf(d1) - 1,
+        "gamma": pdf / (S * sigma * sqrt_t),
+        "vega": S * pdf * sqrt_t / 100,
+        "theta": theta / 365,
+        "rho": (K * T * disc * norm.cdf(d2) if is_call else -K * T * disc * norm.cdf(-d2)) / 100,
+        "prob_itm": norm.cdf(d2) if is_call else norm.cdf(-d2),
+    }
 
 
-# Streamlit interface
-def display_favicon():
+def implied_volatility(target, S, K, T, r, option_type="call", tol=1e-8, max_iter=100):
+    """Back out the volatility that reprices an option at ``target``.
+
+    Uses bisection over a wide bracket, which is unconditionally stable for
+    the monotone price-vs-volatility relationship. Returns ``None`` when the
+    target price sits outside the no-arbitrage bounds.
+    """
+    if target <= 0 or T <= 0:
+        return None
+
+    if option_type == "call":
+        floor, ceiling = max(S - K * np.exp(-r * T), 0.0), S
+    else:
+        floor, ceiling = max(K * np.exp(-r * T) - S, 0.0), K
+
+    if target < floor - 1e-6 or target > ceiling:
+        return None
+
+    lo, hi = 0.0005, 5.0
+    for _ in range(max_iter):
+        mid = (lo + hi) / 2
+        if black_scholes(S, K, T, r, mid, option_type) > target:
+            hi = mid
+        else:
+            lo = mid
+        if hi - lo < tol:
+            break
+    return (lo + hi) / 2
+
+
+def main():
+    """Serve the pricing desk as a full-bleed Streamlit page."""
+    st.set_page_config(
+        page_title="Options Pricing Desk · Black-Scholes",
+        page_icon=str(FAVICON) if FAVICON.exists() else "📊",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+
+    # The desk owns the whole page: strip Streamlit's chrome and padding so the
+    # embedded document sits flush against the viewport.
     st.markdown(
         """
-        <head>
-            <link rel="icon" href="favicon.ico" type="image/x-icon">
-        </head>
+        <style>
+          header[data-testid="stHeader"] { display: none; }
+          div[data-testid="stToolbar"] { display: none; }
+          div[data-testid="stDecoration"] { display: none; }
+          section[data-testid="stSidebar"] { display: none; }
+          footer { display: none; }
+          .stApp { background: #F4F3EF; }
+          .block-container { padding: 0 !important; max-width: 100% !important; }
+          div[data-testid="stAppViewBlockContainer"] { padding: 0 !important; }
+          iframe { display: block; border: none; width: 100%; }
+        </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
-display_favicon()
 
-st.title("📊 Black-Scholes Model")
-st.markdown("Created by: [Reda Akdim](https://www.linkedin.com/in/reda-akdim/)")
-st.markdown("### Formula for black-scholes model")
-st.latex(r'''
-\begin{align*}
-    \text{Call Price (C)} &= S_0 \Phi(d_1) - K e^{-rT} \Phi(d_2) \\
-    \text{Put Price (P)} &= K e^{-rT} \Phi(-d_2) - S_0 \Phi(-d_1) \\
-    \text{where} \\
-    d_1 &= \frac{\ln(S_0 / K) + (r + \sigma^2 / 2)T}{\sigma \sqrt{T}} \\
-    d_2 &= d_1 - \sigma \sqrt{T} \\
-    \Phi(x) &= \text{CDF of the standard normal distribution}
-\end{align*}
-''')
-# Sidebar for parameter inputs
-st.sidebar.header("Input Parameters")
+    components.html(DESK_HTML.read_text(encoding="utf-8"), height=FALLBACK_HEIGHT, scrolling=True)
 
-# Input parameters
-S = st.sidebar.number_input("Current Asset Price", min_value=0.0, value=100.0, step=0.1)
-K = st.sidebar.number_input("Strike Price", min_value=0.0, value=100.0, step=0.1)
-T = st.sidebar.number_input("Time to Maturity (Years)", min_value=0.0, value=1.0, step=0.01)
-r = st.sidebar.slider("Risk-Free Interest Rate", min_value=0.0, max_value=0.2, value=0.05, step=0.01)
-sigma = st.sidebar.slider("Volatility (σ)", min_value=0.0, max_value=1.0, value=0.2, step=0.01)
 
-# Additional parameters for heatmap
-st.sidebar.subheader("Heatmap Parameters")
-min_S = st.sidebar.number_input("Min Spot Price", min_value=0.0, value=80.0, step=0.1)
-max_S = st.sidebar.number_input("Max Spot Price", min_value=0.0, value=120.0, step=0.1)
-min_sigma = st.sidebar.slider("Min Volatility for Heatmap", min_value=0.01, max_value=1.0, value=0.01, step=0.01)
-max_sigma = st.sidebar.slider("Max Volatility for Heatmap", min_value=0.01, max_value=1.0, value=0.5, step=0.01)
-num_S_points = st.sidebar.slider("Number of Stock Price Points", min_value=5, max_value=20, value=8)
-num_sigma_points = st.sidebar.slider("Number of Volatility Points", min_value=5, max_value=20, value=8)
-colorscale = st.sidebar.selectbox("Color Scale", options=['Viridis', 'Cividis', 'Plasma', 'Inferno'], index=0)
-
-# Display the parameters in a table
-st.subheader("Input Parameters Overview")
-parameter_data = {
-    "Current Asset Price": [f"{S:.2f}"],
-    "Strike Price": [f"{K:.2f}"],
-    "Time to Maturity (Years)": [f"{T:.2f}"],
-    "Volatility (σ)": [f"{sigma:.2f}"],
-    "Risk-Free Interest Rate": [f"{r:.2f}"],
-    "Min Spot Price": [f"{min_S:.2f}"],
-    "Max Spot Price": [f"{max_S:.2f}"],
-    "Min Volatility for Heatmap": [f"{min_sigma:.2f}"],
-    "Max Volatility for Heatmap": [f"{max_sigma:.2f}"]
-}
-st.table(parameter_data)
-
-# Option prices
-call_price = black_scholes(S, K, T, r, sigma, option_type='call')
-put_price = black_scholes(S, K, T, r, sigma, option_type='put')
-
-# Displaying prices in colored boxes
-st.markdown(f"""
-<div style="display: flex; justify-content: space-around; margin-bottom: 20px;">
-    <div style="background-color: green; padding: 15px; border-radius: 5px; color: white;">
-        Call Option Price: <strong>${call_price:.2f}</strong>
-    </div>
-    <div style="background-color: tomato; padding: 15px; border-radius: 5px; color: white;">
-        Put Option Price: <strong>${put_price:.2f}</strong>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Creating heatmaps for the option prices across different stock prices and volatilities
-st.subheader("Call and Put Option Price Heatmaps")
-st.markdown(''' :blue-background[Gain insights into how option prices fluctuate across different spot prices and volatility levels using interactive heatmap parameters, all while ensuring a constant strike price.]''')
-S_range = np.linspace(min_S, max_S, num_S_points)
-sigma_range = np.linspace(min_sigma, max_sigma, num_sigma_points)
-
-call_prices = np.zeros((len(S_range), len(sigma_range)))
-put_prices = np.zeros((len(S_range), len(sigma_range)))
-
-for i, S_val in enumerate(S_range):
-    for j, sigma_val in enumerate(sigma_range):
-        call_prices[i, j] = black_scholes(S_val, K, T, r, sigma_val, 'call')
-        put_prices[i, j] = black_scholes(S_val, K, T, r, sigma_val, 'put')
-
-# Plotly heatmaps in subplots
-fig = make_subplots(
-    rows=1, cols=2,
-    subplot_titles=("Call Option Price Heatmap", "Put Option Price Heatmap"),
-    shared_yaxes=True,
-    column_widths=[0.48, 0.48],  # Adjust column width to fit within the page
-    horizontal_spacing=0.05  # Adjust spacing between subplots
-)
-
-# Call Option Heatmap
-fig.add_trace(
-    go.Heatmap(
-        z=call_prices,
-        x=np.round(sigma_range, 2),
-        y=np.round(S_range, 2),
-        colorscale=colorscale,
-        text=np.round(call_prices, 2),
-        hoverinfo="x+y+z",
-        showscale=True,
-    ),
-    row=1, col=1
-)
-
-# Put Option Heatmap
-fig.add_trace(
-    go.Heatmap(
-        z=put_prices,
-        x=np.round(sigma_range, 2),
-        y=np.round(S_range, 2),
-        colorscale=colorscale,
-        text=np.round(put_prices, 2),
-        hoverinfo="x+y+z",
-        showscale=True,
-    ),
-    row=1, col=2
-)
-
-fig.update_traces(texttemplate="%{text:.2f}", textfont_size=12)
-
-fig.update_layout(
-    margin=dict(l=20, r=20, t=40, b=40),
-    xaxis_title='Volatility (σ)',
-    yaxis_title='Stock Price (S)',
-    width=900,  # Adjusted width to fit within Streamlit layout
-    height=500,  # Adjusted height for better proportions
-    yaxis=dict(
-        tickvals=np.round(S_range, 2)
-    )
-)
-
-st.plotly_chart(fig)
-
-# Adding styling to improve layout
-st.markdown(
-    """
-    <style>
-    .reportview-container {
-        background: #f5f5f5;
-    }
-    .sidebar .sidebar-content {
-        background: #f5f5f5;
-    }
-    h1 {
-        
-    }
-    </style>
-    """, unsafe_allow_html=True
-)
+# Streamlit runs this file as "__main__", so the guard covers both
+# `streamlit run black_scholes.py` and `python black_scholes.py`, while
+# leaving the pricing helpers importable without side effects.
+if __name__ == "__main__":
+    main()
